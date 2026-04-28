@@ -33,9 +33,11 @@ RUN git clone https://github.com/ggml-org/llama.cpp /opt/llama.cpp \
 # CUDA arch: GB10 Blackwell is sm_120a
 # At BUILD time, the real /usr/lib/aarch64-linux-gnu/libcuda.so.1 (provided
 # by the NVIDIA driver) is NOT in the image — the cuda image ships only the
-# link stubs at /usr/local/cuda/lib64/stubs/libcuda.so. Add that to the linker
-# search path so llama-server links cleanly. At RUN time the host driver's
-# real libcuda is bind-mounted by --gpus all (NVIDIA Container Toolkit).
+# link stub at /usr/local/cuda/lib64/stubs/libcuda.so. The linker looks for
+# `libcuda.so.1` (with the soname suffix), so we add a symlink alongside the
+# stub. At RUN time the host driver's real libcuda is bind-mounted by --gpus all
+# (NVIDIA Container Toolkit) and shadows the stub.
+RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LIBRARY_PATH:-}
 RUN cd /opt/llama.cpp && \
     cmake -B build-cuda \
@@ -45,8 +47,8 @@ RUN cd /opt/llama.cpp && \
       -DLLAMA_BUILD_TESTS=OFF \
       -DLLAMA_BUILD_EXAMPLES=ON \
       -DLLAMA_BUILD_SERVER=ON \
-      -DCMAKE_EXE_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
-      -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
+      -DCMAKE_EXE_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs -Wl,--no-as-needed -Wl,--allow-shlib-undefined" \
+      -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs -Wl,--no-as-needed -Wl,--allow-shlib-undefined" \
  && cmake --build build-cuda --target llama-server -j$(nproc)
 
 # --- bench tool: install uv (provides uvx) ---
